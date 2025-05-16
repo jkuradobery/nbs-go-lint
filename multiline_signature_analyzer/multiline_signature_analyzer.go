@@ -98,11 +98,11 @@ func processSingleFunction(
 	}
 
 	message := "Line break after multiline " +
-		"function signature is required"
+		"function signature is required."
 	if difference > 2 {
 		message = fmt.Sprintf(
 			"Too many line breaks after the multiline "+
-				"function signature: %d",
+				"function signature: %d.",
 			difference-1,
 		)
 	}
