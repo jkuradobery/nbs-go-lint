@@ -115,10 +115,4 @@ func brokenExample(){
 	if err != nil{
 		panic(err)
 	}
-
-	if err != nil{
-		panic(err)
-		if err != nil{
-			panic(err)
-		}}
 }

@@ -2,7 +2,6 @@ package line_breaks_analyzer
 
 import (
 	"go/ast"
-	"go/token"
 	"log"
 	"strings"
 
@@ -28,7 +27,6 @@ func LineBreakAfterRbracket() *analysis.Analyzer {
 				}
 
 				lines := strings.Split(string(data), "\n")
-				rbrackets := make(map[token.Pos]int)
 				ast.Inspect(file, func(node ast.Node) bool {
 					if blockStatement, ok := node.(*ast.BlockStmt); ok {
 						checkNoLineBreakBeforeRbracket(
@@ -41,12 +39,6 @@ func LineBreakAfterRbracket() *analysis.Analyzer {
 							blockStatement,
 							lines,
 						)
-
-						if count, ok := rbrackets[blockStatement.Rbrace]; ok {
-							rbrackets[blockStatement.Rbrace] = count + 1
-						} else {
-							rbrackets[blockStatement.Rbrace] = 1
-						}
 					}
 
 					if deferStatement, ok := node.(*ast.DeferStmt); ok {
@@ -58,20 +50,6 @@ func LineBreakAfterRbracket() *analysis.Analyzer {
 					}
 					return true
 				})
-
-				for pos, count := range rbrackets {
-					if count == 1 {
-						continue
-					}
-
-					pass.Report(analysis.Diagnostic{
-						Pos:      pos,
-						End:      0,
-						Category: "line_breaks",
-						Message: "Multiple closing } brackets " +
-							"on the same line are not allowed.",
-					})
-				}
 			}
 
 			return nil, nil
