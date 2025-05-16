@@ -6,15 +6,13 @@ import "fmt"
 // multiple line function signature
 // expected analysis results for test are set via want comments
 
+
 // This is valid
-//
-//goland:noinspection GoUnusedFunct
 //goland:noinspection GoUnusedFunction
 func functionExample(a, b int) int {
 	return a + b
 }
 
-ction GoUnusedFu
 // This is valid
 //goland:noinspection GoUnusedFunction
 func someFunctionWithLongYetValidSignature(
@@ -28,8 +26,6 @@ func someFunctionWithLongYetValidSignature(
 	)
 }
 
-nusedFunction
-func so
 // This is also valid
 //goland:noinspection GoUnusedFunction
 func someFunctionWithLongYetValidSignatureWithComment(
@@ -46,62 +42,48 @@ func someFunctionWithLongYetValidSignatureWithComment(
 
 // This is invalid
 // WARNING: This type of formatting is forbidden by gofmt, alas we still want to check this.
-oinspection GoUnusedFunction
-func som
 // DO NOT FORMAT THIS FILE WITH GOFMT
 // @formatter:off
 //goland:noinspection GoUnusedFunction
 func someFunctionWithLongYetInvalidSignature(
+	firstUnnecessaryLongArgumentName int,
 	secondUnnecessaryLongArgumentName int) { //want `Too many line breaks after the multiline function signature: 2`
 
 
 	fmt.Print(
 		"Hello world",
-me,
-	)
-}
-
-// @formatter:on
-// @formatter:on
-
-// This is invalid
-//
-//goland:noinspecti
 		firstUnnecessaryLongArgumentName+secondUnnecessaryLongArgumentName,
 	)
 }
 // @formatter:on
 
 // This is invalid
-ngArgumentName int) { //want `Line bre
 //goland:noinspection GoUnusedFunction
 func someFunctionWithStatementAfterClosingBracket(
 	firstUnnecessaryLongArgumentName int,
 	secondUnnecessaryLongArgumentName int) { //want `Line break after multiline function signature is required`
-) {
+	fmt.Println("Hello world")
 	fmt.Print(
 		firstUnnecessaryLongArgumentName,
 		secondUnnecessaryLongArgumentName)
 }
 
-
 // This is valid
 //goland:noinspection GoUnusedFunction,GoUnusedParameter
 func someFunctionWithEmptyBody(
-) {
-} // want `Line break after multiline function signature is required`
+	firstUselessArgument []string,
 	secondUselessArgument map[string]string,
 ){
 
 }
-}
 
 // This is invalid
 //goland:noinspection GoUnusedFunction,GoUnusedParameter
-) { //want `Too many line breaks after the multiline function signature: 3`
+func someFunctionWithEmptyBodyFailsLinter(
 	firstUselessArgument []string,
-}
+	secondUselessArgument map[string]string,
 ){} // want `Line break after multiline function signature is required`
+
 // This is invalid
 // @formatter:off
 //goland:noinspection GoUnusedFunction,GoUnusedParameter
