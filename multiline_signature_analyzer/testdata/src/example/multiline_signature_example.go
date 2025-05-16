@@ -47,7 +47,7 @@ func someFunctionWithLongYetValidSignatureWithComment(
 //goland:noinspection GoUnusedFunction
 func someFunctionWithLongYetInvalidSignature(
 	firstUnnecessaryLongArgumentName int,
-	secondUnnecessaryLongArgumentName int) { //want `Too many line breaks after the multiline function signature: 2.`
+	secondUnnecessaryLongArgumentName int) { //want "Too many line breaks after the multiline function signature: 2."
 
 
 	fmt.Print(
@@ -61,7 +61,7 @@ func someFunctionWithLongYetInvalidSignature(
 //goland:noinspection GoUnusedFunction
 func someFunctionWithStatementAfterClosingBracket(
 	firstUnnecessaryLongArgumentName int,
-	secondUnnecessaryLongArgumentName int) { //want `Line break after multiline function signature is required.`
+	secondUnnecessaryLongArgumentName int) { //want "Line break after multiline function signature is required."
 	fmt.Println("Hello world")
 	fmt.Print(
 		firstUnnecessaryLongArgumentName,
@@ -82,7 +82,7 @@ func someFunctionWithEmptyBody(
 func someFunctionWithEmptyBodyFailsLinter(
 	firstUselessArgument []string,
 	secondUselessArgument map[string]string,
-){} // want `Line break after multiline function signature is required.`
+){} // want "Line break after multiline function signature is required."
 
 // This is invalid
 // @formatter:off
@@ -90,7 +90,7 @@ func someFunctionWithEmptyBodyFailsLinter(
 func someFunctionWithEmptyBodyMultipleLineInside(
 	firstUselessArgument []string,
 	secondUselessArgument map[string]string,
-){ //want `Too many line breaks after the multiline function signature: 3.`
+){ //want "Too many line breaks after the multiline function signature: 3."
 
 
 
