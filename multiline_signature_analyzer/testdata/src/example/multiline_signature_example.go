@@ -2,6 +2,7 @@ package example
 
 import "fmt"
 
+// DO NOT FORMAT THIS FILE WITH GOFMT
 // This is a file to check the linter for line break after
 // multiple line function signature
 // expected analysis results for test are set via want comments
@@ -42,7 +43,6 @@ func someFunctionWithLongYetValidSignatureWithComment(
 
 // This is invalid
 // WARNING: This type of formatting is forbidden by gofmt, alas we still want to check this.
-// DO NOT FORMAT THIS FILE WITH GOFMT
 // @formatter:off
 //goland:noinspection GoUnusedFunction
 func someFunctionWithLongYetInvalidSignature(
