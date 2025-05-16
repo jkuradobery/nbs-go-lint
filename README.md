@@ -4,8 +4,8 @@
 
 ### Formating
 - New line after `}` (exception: defer is pressed against the block above without indentation).
-- Multiple closing curly brackets on the same line are not allowed.
 - New line before `)` in the case of multiline calls.
+- New line after multiline function signature.
 - Use ID in all identifiers (not Id) (except for protobufs).
 
 ### Separators
