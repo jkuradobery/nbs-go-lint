@@ -11,9 +11,12 @@
 
 ### Separators
 - The separator `/////` 80 symbols length is required after package declaration.
+- The should be exactly one empty line before and after the separator.
 - The separator is required between private and public methods.
 - The separator is required before and after interface declaration.
 - The separator is required around each struct + its methods.
 - The separator is forbidden at the end of the file.
 - Function groups should also be separated from class methods.
 - Use of separators between struct methods is allowed but not mandatory, separators shall be used for separating "logical" groups of methods.
+- Constants should be separated from the rest of the code by a separator.
+- The separator should be present between tests and the code used in tests.
