@@ -20,3 +20,4 @@
 - Use of separators between struct methods is allowed but not mandatory, separators shall be used for separating "logical" groups of methods.
 - Constants should be separated from the rest of the code by a separator.
 - The separator should be present between tests and the code used in tests.
+- If the file has no imports, the separator should be placed after the package declaration.
