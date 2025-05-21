@@ -1,4 +1,4 @@
-package plugin
+package main
 
 import (
 	"github.com/jkuradobery/nbs-go-lint/line_breaks_analyzer"
