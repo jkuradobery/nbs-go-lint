@@ -1,26 +1,35 @@
 package separator_analyzer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"log"
 	"slices"
 	"strings"
 
+	set "github.com/deckarep/golang-set/v2"
 	"golang.org/x/tools/go/analysis"
 )
 
 // between comment and separator can also be one line
 // If comment contains several "/" it should be treated as a separator for which
 // length != 80 is not allowed
+
 ////////////////////////////////////////////////////////////////////////////////
 
-const separator = "////////////////////////////////////////////////////////////////////////////////"
+const Separator = "////////////////////////////////////////////////////////////////////////////////"
+const emptyReceiver = "emptyReceiver"
+const analyzerCategory = "separator"
+const MixingPublicAndPrivate = "Mixing public and private methods in the same group is not allowed"
+const MixingTestingAndCode = "Mixing testing and code methods in the same group is not allowed"
+const MixingMethodsWithIncorrectReceiverFormat = "Mixing methods with different receivers in the same group is not allowed %s"
+const SingleInterfaceOrStructMessage = "Only one interface or struct declaration is allowed between separators"
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func getOriginalCommentText(
-	fset *token.FileSet,
+	fileset *token.FileSet,
 	commentGroup *ast.CommentGroup,
 	data []byte,
 ) string {
@@ -32,8 +41,8 @@ func getOriginalCommentText(
 	var builder strings.Builder
 	for _, comment := range commentGroup.List {
 		// Get the position information
-		startPos := fset.Position(comment.Slash)
-		endPos := fset.Position(comment.End())
+		startPos := fileset.Position(comment.Slash)
+		endPos := fileset.Position(comment.End())
 
 		// Extract the original text
 		originalText := data[startPos.Offset:endPos.Offset]
@@ -60,6 +69,153 @@ func Filter[T any](data []T, predicate func(T) bool) []T {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type functionDeclarationType struct {
+	receiver  string
+	isPublic  bool
+	isTesting bool
+}
+
+func (f *functionDeclarationType) String() string {
+	return fmt.Sprintf(
+		"receiver: %s, isPublic: %v, isTesting: %v",
+		f.receiver,
+		f.isPublic,
+		f.isTesting,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type functionDeclarationStorage struct {
+	declarationsForType map[string][]*ast.FuncDecl
+	declarationTypes    []functionDeclarationType
+}
+
+func newFunctionDeclarationStorage() *functionDeclarationStorage {
+	return &functionDeclarationStorage{
+		declarationsForType: make(map[string][]*ast.FuncDecl),
+		declarationTypes:    make([]functionDeclarationType, 0),
+	}
+}
+
+func (f *functionDeclarationStorage) Add(decl *ast.FuncDecl) {
+	declarationType := functionDeclarationType{
+		receiver: emptyReceiver,
+	}
+	if decl.Recv != nil && len(decl.Recv.List) > 0 {
+		// If the function has a receiver, we consider it as a method
+		// and use the receiver type as part of the key.
+		if ident, ok := decl.Recv.List[0].Type.(*ast.Ident); ok {
+			declarationType.receiver = ident.Name
+		} else if starExpr, ok := decl.Recv.List[0].Type.(*ast.StarExpr); ok {
+			if ident, ok := starExpr.X.(*ast.Ident); ok {
+				declarationType.receiver = ident.Name
+			}
+		}
+	}
+
+	if decl.Name.IsExported() {
+		declarationType.isPublic = true
+	}
+
+	if strings.HasPrefix(decl.Name.Name, "Test") {
+		declarationType.isTesting = true
+	}
+
+	key := declarationType.String()
+	if _, exists := f.declarationsForType[key]; !exists {
+		f.declarationsForType[key] = make([]*ast.FuncDecl, 0)
+		f.declarationTypes = append(f.declarationTypes, declarationType)
+	}
+	f.declarationsForType[key] = append(f.declarationsForType[key], decl)
+}
+func (f *functionDeclarationStorage) MixedTestingAndCode() []*ast.FuncDecl {
+	if len(f.declarationTypes) == 0 {
+		return []*ast.FuncDecl{}
+	}
+
+	result := make([]*ast.FuncDecl, 0)
+	first := f.declarationTypes[0]
+	for _, declType := range f.declarationTypes {
+		if declType.isTesting != first.isTesting {
+			if len(result) > 0 {
+				continue
+			}
+
+			result = append(
+				result,
+				f.declarationsForType[declType.String()][0],
+				f.declarationsForType[first.String()][0],
+			)
+		}
+	}
+
+	return result
+}
+
+func (f *functionDeclarationStorage) MixedPublicAndPrivate() []*ast.FuncDecl {
+	if len(f.declarationTypes) == 0 {
+		return []*ast.FuncDecl{}
+	}
+
+	result := make([]*ast.FuncDecl, 0)
+	first := f.declarationTypes[0]
+	for _, declType := range f.declarationTypes {
+		if declType.isPublic != first.isPublic {
+
+			if len(result) > 0 {
+				result = append(
+					result,
+					f.declarationsForType[first.String()]...,
+				)
+			}
+			result = append(
+				result,
+				f.declarationsForType[declType.String()]...,
+			)
+		}
+	}
+
+	return result
+}
+
+func (f *functionDeclarationStorage) DeclarationsByReceiver() map[string][]*ast.FuncDecl {
+
+	result := make(map[string][]*ast.FuncDecl)
+	for _, declType := range f.declarationTypes {
+		result[declType.receiver] = f.declarationsForType[declType.String()]
+	}
+
+	return result
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func functionReturnsStruct(decl *ast.FuncDecl, structName string) bool {
+	if decl.Type == nil || decl.Type.Results == nil {
+		return false
+	}
+
+	for _, result := range decl.Type.Results.List {
+		switch t := result.Type.(type) {
+		case *ast.Ident:
+			if t.Name == structName {
+				return true
+			}
+		case *ast.StarExpr:
+			if ident, ok := t.X.(*ast.Ident); ok && ident.Name == structName {
+				if ident.Name == structName {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func SeparatorAnalyzer() *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "SeparatorAnalyzer",
@@ -72,6 +228,9 @@ func SeparatorAnalyzer() *analysis.Analyzer {
 				separatorAnalysis.ForbiddenMultilineComments()
 				separatorAnalysis.ForbiddenSeparatorOverCode()
 				separatorAnalysis.EmptyLinesAroundSeparator()
+				separatorAnalysis.NoDeclarationsBetweenTwoSeparators()
+				separatorAnalysis.CheckSeparatorAfterPackageForMissingImport()
+				separatorAnalysis.CheckSeparatorGroupsCorrectEntities()
 			}
 
 			return nil, nil
@@ -83,7 +242,7 @@ func SeparatorAnalyzer() *analysis.Analyzer {
 
 type SeparatorAnalysis struct {
 	pass                 *analysis.Pass
-	fset                 *token.FileSet
+	fileset              *token.FileSet
 	file                 *ast.File
 	topLevelDeclarations []ast.Decl
 	imports              []*ast.ImportSpec
@@ -135,7 +294,7 @@ func NewSeparatorAnalysis(
 	lines := strings.Split(string(data), "\n")
 	return SeparatorAnalysis{
 		pass:                 pass,
-		fset:                 pass.Fset,
+		fileset:              pass.Fset,
 		file:                 file,
 		topLevelDeclarations: topLevelDeclarations,
 		separators: slices.SortedFunc(
@@ -144,7 +303,7 @@ func NewSeparatorAnalysis(
 					file.Comments,
 					func(group *ast.CommentGroup) bool {
 						text := getOriginalCommentText(pass.Fset, group, data)
-						return strings.Contains(text, separator)
+						return strings.Contains(text, Separator)
 					},
 				),
 			),
@@ -182,7 +341,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorAtTheEnd() {
 		s.pass.Report(analysis.Diagnostic{
 			Pos:      lastSeparator.Pos(),
 			End:      lastSeparator.End(),
-			Category: "separator",
+			Category: analyzerCategory,
 			Message:  "Separators at the end of the file are not allowed",
 		})
 	}
@@ -200,7 +359,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorBeforeImports() {
 			s.pass.Report(analysis.Diagnostic{
 				Pos:      firstSeparator.Pos(),
 				End:      firstSeparator.End(),
-				Category: "separator",
+				Category: analyzerCategory,
 				Message:  "Separator is not allowed to be before package declaration",
 			})
 		}
@@ -212,7 +371,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorBeforeImports() {
 		s.pass.Report(analysis.Diagnostic{
 			Pos:      firstSeparator.Pos(),
 			End:      firstSeparator.End(),
-			Category: "separator",
+			Category: analyzerCategory,
 			Message:  "Separator is not allowed to be before imports",
 		})
 	}
@@ -220,13 +379,13 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorBeforeImports() {
 
 func (s *SeparatorAnalysis) ForbiddenMultilineComments() {
 	for _, group := range s.separators {
-		startLine := s.fset.Position(group.Pos()).Line
-		endLine := s.fset.Position(group.End()).Line
+		startLine := s.fileset.Position(group.Pos()).Line
+		endLine := s.fileset.Position(group.End()).Line
 		if endLine-startLine > 0 {
 			s.pass.Report(analysis.Diagnostic{
 				Pos:      group.Pos(),
 				End:      group.End(),
-				Category: "separator",
+				Category: analyzerCategory,
 				Message:  "Separator is not allowed to be a part of multiline comment",
 			})
 		}
@@ -239,13 +398,13 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorOverCode() {
 	}
 
 	for _, separator := range s.separators {
-		// MxN instead of M + N compexity for code simplicity
+		// MxN instead of M + N complexity for code simplicity
 		for _, declaration := range s.topLevelDeclarations {
 			if s.nodesOverlap(separator, declaration) {
 				s.pass.Report(analysis.Diagnostic{
 					Pos:      separator.Pos(),
 					End:      separator.End(),
-					Category: "separator",
+					Category: analyzerCategory,
 					Message:  "Separator is not allowed to be over code",
 				})
 			}
@@ -263,7 +422,7 @@ func (s *SeparatorAnalysis) EmptyLinesAroundSeparator() {
 	}
 
 	for _, separator := range s.separators {
-		lineIndex := s.fset.Position(separator.Pos()).Line - 1
+		lineIndex := s.position(separator.Pos()).Line - 1
 		emptyLinesBefore := 0
 		emptyLinesAfter := 0
 		for i := lineIndex + 1; i < len(s.lines); i++ {
@@ -301,14 +460,114 @@ func (s *SeparatorAnalysis) EmptyLinesAroundSeparator() {
 		s.pass.Report(analysis.Diagnostic{
 			Pos:      separator.Pos(),
 			End:      separator.End(),
-			Category: "separator",
-			Message:  "Each separator should be surrounded by exactly one empty line",
+			Category: analyzerCategory,
+			Message:  "Each Separator should be surrounded by exactly one empty line",
 		})
 	}
 }
 
 func (s *SeparatorAnalysis) NoDeclarationsBetweenTwoSeparators() {
+	if len(s.separators) < 2 {
+		return
+	}
 
+	for i := 0; i < len(s.separators)-1; i++ {
+		currentSeparator := s.separators[i]
+		nextSeparator := s.separators[i+1]
+		declarationFound := false
+		for _, declaration := range s.topLevelDeclarations {
+			if declaration.Pos() > currentSeparator.End() && declaration.End() < nextSeparator.Pos() {
+				declarationFound = true
+				break
+			}
+		}
+
+		if !declarationFound {
+			s.pass.Report(analysis.Diagnostic{
+				Pos:      currentSeparator.End(),
+				End:      nextSeparator.Pos(),
+				Category: analyzerCategory,
+				Message:  "Empty section detected: no declarations found between consecutive separators",
+			})
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) CheckSeparatorAfterPackageForMissingImport() {
+	if len(s.imports) > 0 {
+		return
+	}
+
+	const message = "Missing Separator after package " +
+		"declaration when no imports present"
+	if len(s.separators) == 0 {
+		s.pass.Report(analysis.Diagnostic{
+			Pos:      s.file.Package,
+			End:      s.file.Package,
+			Category: analyzerCategory,
+			Message:  message,
+		})
+		return
+	}
+
+	firstSeparator := s.separators[0]
+	packageLine := s.position(s.file.Package).Line
+	separatorLine := s.position(firstSeparator.Pos()).Line
+	if separatorLine != packageLine+2 {
+		s.pass.Report(
+			analysis.Diagnostic{
+				Pos:      s.file.Package,
+				End:      s.file.Package,
+				Category: analyzerCategory,
+				Message:  message,
+			},
+		)
+	}
+}
+
+func (s *SeparatorAnalysis) CheckSeparatorGroupsCorrectEntities() {
+	// Type alias groups, var groups, const groups, import groups should be separated
+	// by a single separator.
+	// Exactly one interface can be declared between two separators.
+	// Test functions should be separated by a single separator.
+	// Exactly one struct and its constructor and its private methods should be separated.
+	// Mixing of public and private methods in the same group is not allowed.
+	for _, bucket := range s.collectDeclarationsByBuckets() {
+		if len(bucket) == 0 {
+			continue
+		}
+
+		declarationsByTypeWithinBucket := make(map[token.Token][]ast.Decl)
+		for _, decl := range bucket {
+			switch d := decl.(type) {
+			case *ast.GenDecl:
+				tok := s.getTokenForTopLevelDecl(d)
+				if _, ok := declarationsByTypeWithinBucket[tok]; !ok {
+					declarationsByTypeWithinBucket[tok] = make([]ast.Decl, 0)
+				}
+				declarationsByTypeWithinBucket[tok] = append(
+					declarationsByTypeWithinBucket[tok],
+					decl,
+				)
+			case *ast.FuncDecl:
+				declarationsByTypeWithinBucket[token.FUNC] = append(
+					declarationsByTypeWithinBucket[token.FUNC],
+					decl,
+				)
+			default:
+				message := "Unknown declaration type found in bucket, might be a bug"
+				s.pass.Report(
+					analysis.Diagnostic{
+						Pos:      decl.Pos(),
+						End:      decl.End(),
+						Category: analyzerCategory,
+						Message:  message,
+					},
+				)
+			}
+			s.processDeclarationsWithinBucket(declarationsByTypeWithinBucket)
+		}
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -324,5 +583,294 @@ func (s *SeparatorAnalysis) nodesOverlap(node ast.Node, node2 ast.Node) bool {
 }
 
 func (s *SeparatorAnalysis) position(pos token.Pos) token.Position {
-	return s.fset.Position(pos)
+	return s.fileset.Position(pos)
+}
+
+func (s *SeparatorAnalysis) collectDeclarationsByBuckets() map[int][]ast.Decl {
+	// declarations between j - 1 and j separators go to bucket j
+	buckets := make(map[int][]ast.Decl)
+	if len(s.separators) == 0 || len(s.topLevelDeclarations) == 0 {
+		return buckets
+	}
+
+	buckets[0] = make([]ast.Decl, 0, len(s.topLevelDeclarations))
+	firstSeparator := s.separators[0]
+	for _, declaration := range s.topLevelDeclarations {
+		if declaration.Pos() < firstSeparator.Pos() {
+			continue
+		}
+	}
+
+	for i := 0; i < len(s.separators)-1; i++ {
+
+		currentSeparator := s.separators[i]
+		nextSeparator := s.separators[i+1]
+		buckets[i+1] = make([]ast.Decl, 0, len(s.topLevelDeclarations))
+		for _, declaration := range s.topLevelDeclarations {
+			if declaration.Pos() <= currentSeparator.End() {
+				continue
+			}
+
+			if declaration.End() >= nextSeparator.Pos() {
+				continue
+			}
+
+			buckets[i+1] = append(buckets[i+1], declaration)
+		}
+	}
+
+	lastSeparator := s.separators[len(s.separators)-1]
+	buckets[len(s.separators)] = make([]ast.Decl, 0, len(s.topLevelDeclarations))
+	for _, declaration := range s.topLevelDeclarations {
+		if declaration.Pos() > lastSeparator.End() {
+			buckets[len(s.separators)] = append(buckets[len(s.separators)], declaration)
+		}
+	}
+
+	return buckets
+}
+
+func (s *SeparatorAnalysis) processDeclarationsWithinBucket(
+	declarationsByTypeWithinBucket map[token.Token][]ast.Decl,
+) {
+	singleDeclarationTypeRequired := map[token.Token]struct{}{
+		token.TYPE:   {},
+		token.VAR:    {},
+		token.CONST:  {},
+		token.IMPORT: {},
+	}
+	if len(declarationsByTypeWithinBucket) == 0 {
+		return
+	}
+
+	storage := newFunctionDeclarationStorage()
+	if functionDecls, ok := declarationsByTypeWithinBucket[token.FUNC]; ok {
+		for _, decl := range functionDecls {
+			if decl, ok := decl.(*ast.FuncDecl); ok {
+				storage.Add(decl)
+			}
+		}
+	}
+
+	for _, tokenType := range []token.Token{token.INTERFACE, token.STRUCT} {
+		if decls, ok := declarationsByTypeWithinBucket[tokenType]; ok {
+			if len(decls) > 1 {
+				s.reportMultipleInterfacesOrStructs(decls)
+				return
+			}
+		}
+	}
+
+	if len(declarationsByTypeWithinBucket) == 1 {
+		for declType := range declarationsByTypeWithinBucket {
+			if _, ok := singleDeclarationTypeRequired[declType]; ok {
+				return
+			}
+
+			if declType == token.FUNC {
+				s.reportIncorrectFunctionsSeparation(storage)
+				return
+			}
+		}
+	}
+
+	if len(declarationsByTypeWithinBucket) > 2 {
+		s.reportVariousTypesBetweenSeparators(declarationsByTypeWithinBucket)
+		return
+	}
+
+	allowedTogether := set.NewSet(token.FUNC, token.STRUCT)
+	keys := set.NewSetFromMapKeys(declarationsByTypeWithinBucket)
+	if !keys.IsSubset(allowedTogether) {
+		s.reportVariousTypesBetweenSeparators(declarationsByTypeWithinBucket)
+		return
+	}
+
+	s.reportMixingTestsWithCode(storage)
+	// TODO should we report mixing public and private methods here?
+	structName := ""
+	if structDecls, ok := declarationsByTypeWithinBucket[token.STRUCT]; ok {
+		spec := structDecls[0].(*ast.GenDecl).Specs[0]
+		structName = spec.(*ast.TypeSpec).Name.Name
+	}
+
+	for receiver, declarations := range storage.DeclarationsByReceiver() {
+		if receiver == emptyReceiver {
+			for _, decl := range declarations {
+				if !functionReturnsStruct(decl, structName) {
+					s.pass.Report(
+						analysis.Diagnostic{
+							Pos:      decl.Pos(),
+							End:      decl.End(),
+							Category: analyzerCategory,
+							Message: fmt.Sprintf(
+								"Function which is not a constructor for struct '%s' is not allowed in the same group as struct '%s'",
+								decl.Name.Name,
+								structName,
+							),
+						},
+					)
+				}
+			}
+		} else if receiver != structName {
+			for _, decl := range declarations {
+				s.pass.Report(
+					analysis.Diagnostic{
+						Pos:      decl.Pos(),
+						End:      decl.End(),
+						Category: analyzerCategory,
+						Message: fmt.Sprintf(
+							"Method with receiver '%s' is not allowed in the same group as struct '%s'",
+							receiver,
+							structName,
+						),
+					},
+				)
+			}
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) reportMultipleInterfacesOrStructs(
+	decls []ast.Decl,
+) {
+	s.pass.Report(analysis.Diagnostic{
+		Pos:      decls[0].Pos(),
+		End:      decls[len(decls)-1].End(),
+		Category: analyzerCategory,
+		Message:  SingleInterfaceOrStructMessage,
+	})
+}
+
+func (s *SeparatorAnalysis) reportVariousTypesBetweenSeparators(
+	declarationsByTypeWithinBucket map[token.Token][]ast.Decl,
+) {
+
+	declTypeList := make([]string, 0, len(declarationsByTypeWithinBucket))
+	for declType := range declarationsByTypeWithinBucket {
+		declTypeList = append(declTypeList, declType.String())
+	}
+	for _, declarations := range declarationsByTypeWithinBucket {
+		for _, decl := range declarations {
+			s.pass.Report(analysis.Diagnostic{
+				Pos:      decl.Pos(),
+				End:      decl.End(),
+				Category: analyzerCategory,
+				Message: fmt.Sprintf(
+					"Forbidden declarations within the same group: %s",
+					strings.Join(declTypeList, ", "),
+				),
+			})
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) reportIncorrectFunctionsSeparation(
+	storage *functionDeclarationStorage,
+) {
+	s.reportMixingPrivateAndPublic(storage)
+	s.reportMixingTestsWithCode(storage)
+	s.reportMixingDifferentReceiver(storage)
+}
+
+func (s *SeparatorAnalysis) reportMixingDifferentReceiver(
+	storage *functionDeclarationStorage,
+) {
+	if receivers := storage.DeclarationsByReceiver(); len(receivers) > 1 {
+		receiversList := make([]string, 0, len(receivers))
+		for receiver := range receivers {
+			receiversList = append(
+				receiversList,
+				fmt.Sprintf("'%s'", receiver),
+			)
+		}
+		message := fmt.Sprintf(
+			MixingMethodsWithIncorrectReceiverFormat,
+			strings.Join(receiversList, ", "),
+		)
+		for _, decls := range receivers {
+			for _, decl := range decls {
+				s.pass.Report(
+					analysis.Diagnostic{
+						Pos:      decl.Pos(),
+						End:      decl.End(),
+						Category: analyzerCategory,
+						Message:  message,
+					},
+				)
+			}
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) reportMixingTestsWithCode(storage *functionDeclarationStorage) {
+	if decls := storage.MixedTestingAndCode(); len(decls) > 0 {
+		for _, decl := range decls {
+			s.pass.Report(analysis.Diagnostic{
+				Pos:      decl.Pos(),
+				End:      decl.End(),
+				Category: analyzerCategory,
+				Message:  MixingTestingAndCode,
+			})
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) reportMixingPrivateAndPublic(storage *functionDeclarationStorage) {
+	if decls := storage.MixedPublicAndPrivate(); len(decls) > 0 {
+		for _, decl := range decls {
+			s.pass.Report(analysis.Diagnostic{
+				Pos:      decl.Pos(),
+				End:      decl.End(),
+				Category: analyzerCategory,
+				Message:  MixingPublicAndPrivate,
+			})
+		}
+	}
+}
+
+func (s *SeparatorAnalysis) getTokenForTopLevelDecl(
+	decl *ast.GenDecl,
+) token.Token {
+	// GenDecl can be a type, var, const or import declaration
+	// for type declaration we want to return if it is an interface or struct
+	// or a type alias. Multiple specs declaration is not allowed.
+	// The following code is forbidden:
+	// type(
+	// 	a struct{
+	//     b int
+	// 	}
+	// 	c interface{
+	//     V() int
+	// 	}
+	// )
+	if decl.Tok != token.TYPE {
+		return decl.Tok
+	}
+
+	if len(decl.Specs) != 1 {
+		const message = "Type declaration should have exactly one spec"
+		s.pass.Report(
+			analysis.Diagnostic{
+				Pos:      decl.Pos(),
+				End:      decl.End(),
+				Category: analyzerCategory,
+				Message:  message,
+			},
+		)
+		return decl.Tok
+	}
+
+	if typeDecl, ok := decl.Specs[0].(*ast.TypeSpec); ok {
+		switch typeDecl.Type.(type) {
+		case *ast.InterfaceType:
+			return token.INTERFACE
+		case *ast.StructType:
+			return token.STRUCT
+		default:
+			return token.TYPE
+		}
+	}
+
+	return token.TYPE
 }

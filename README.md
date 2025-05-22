@@ -11,7 +11,7 @@
 
 ### Separators
 - The separator `/////` 80 symbols length is required after package declaration.
-- The should be exactly one empty line before and after the separator.
+- There should be exactly one empty line before and after the separator.
 - The separator is required between private and public methods.
 - The separator is required before and after interface declaration.
 - The separator is required around each struct + its methods.
