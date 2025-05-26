@@ -539,21 +539,12 @@ func (s *SeparatorAnalysis) CheckSeparatorGroupsCorrectEntities() {
 
 		declarationsByTypeWithinBucket := make(map[token.Token][]ast.Decl)
 		for _, decl := range bucket {
+			var tok token.Token
 			switch d := decl.(type) {
 			case *ast.GenDecl:
-				tok := s.getTokenForTopLevelDecl(d)
-				if _, ok := declarationsByTypeWithinBucket[tok]; !ok {
-					declarationsByTypeWithinBucket[tok] = make([]ast.Decl, 0)
-				}
-				declarationsByTypeWithinBucket[tok] = append(
-					declarationsByTypeWithinBucket[tok],
-					decl,
-				)
+				tok = s.getTokenForTopLevelDecl(d)
 			case *ast.FuncDecl:
-				declarationsByTypeWithinBucket[token.FUNC] = append(
-					declarationsByTypeWithinBucket[token.FUNC],
-					decl,
-				)
+				tok = token.FUNC
 			default:
 				message := "Unknown declaration type found in bucket, might be a bug"
 				s.pass.Report(
@@ -564,7 +555,17 @@ func (s *SeparatorAnalysis) CheckSeparatorGroupsCorrectEntities() {
 						Message:  message,
 					},
 				)
+				continue
 			}
+
+			if _, ok := declarationsByTypeWithinBucket[tok]; !ok {
+				declarationsByTypeWithinBucket[tok] = make([]ast.Decl, 0)
+			}
+
+			declarationsByTypeWithinBucket[tok] = append(
+				declarationsByTypeWithinBucket[tok],
+				decl,
+			)
 			s.processDeclarationsWithinBucket(declarationsByTypeWithinBucket)
 		}
 	}
@@ -589,7 +590,12 @@ func (s *SeparatorAnalysis) position(pos token.Pos) token.Position {
 func (s *SeparatorAnalysis) collectDeclarationsByBuckets() map[int][]ast.Decl {
 	// declarations between j - 1 and j separators go to bucket j
 	buckets := make(map[int][]ast.Decl)
-	if len(s.separators) == 0 || len(s.topLevelDeclarations) == 0 {
+	if len(s.topLevelDeclarations) == 0 {
+		return buckets
+	}
+
+	if len(s.separators) == 0 {
+		buckets[0] = s.topLevelDeclarations
 		return buckets
 	}
 
