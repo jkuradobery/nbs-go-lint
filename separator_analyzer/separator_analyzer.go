@@ -652,6 +652,7 @@ func (s *SeparatorAnalysis) processDeclarationsWithinBucket(
 		}
 	}
 
+	// Check for single interface or struct declaration
 	for _, tokenType := range []token.Token{token.INTERFACE, token.STRUCT} {
 		if decls, ok := declarationsByTypeWithinBucket[tokenType]; ok {
 			if len(decls) > 1 {
@@ -664,6 +665,10 @@ func (s *SeparatorAnalysis) processDeclarationsWithinBucket(
 	if len(declarationsByTypeWithinBucket) == 1 {
 		for declType := range declarationsByTypeWithinBucket {
 			if _, ok := singleDeclarationTypeRequired[declType]; ok {
+				return
+			}
+
+			if declType == token.INTERFACE {
 				return
 			}
 
