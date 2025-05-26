@@ -1,4 +1,4 @@
-package main
+package nbs_go_lint
 
 import (
 	"golang.org/x/tools/go/analysis"
