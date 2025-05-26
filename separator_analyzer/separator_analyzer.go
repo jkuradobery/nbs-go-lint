@@ -360,7 +360,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorBeforeImports() {
 				Pos:      firstSeparator.Pos(),
 				End:      firstSeparator.End(),
 				Category: analyzerCategory,
-				Message:  "Separator is not allowed to be before package declaration",
+				Message:  "Separator is not allowed before package declaration",
 			})
 		}
 		return
@@ -372,7 +372,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorBeforeImports() {
 			Pos:      firstSeparator.Pos(),
 			End:      firstSeparator.End(),
 			Category: analyzerCategory,
-			Message:  "Separator is not allowed to be before imports",
+			Message:  "Separator is not allowed before imports",
 		})
 	}
 }
@@ -386,7 +386,7 @@ func (s *SeparatorAnalysis) ForbiddenMultilineComments() {
 				Pos:      group.Pos(),
 				End:      group.End(),
 				Category: analyzerCategory,
-				Message:  "Separator is not allowed to be a part of multiline comment",
+				Message:  "Separator is not allowed a part of multiline comment",
 			})
 		}
 	}
@@ -405,7 +405,7 @@ func (s *SeparatorAnalysis) ForbiddenSeparatorOverCode() {
 					Pos:      separator.Pos(),
 					End:      separator.End(),
 					Category: analyzerCategory,
-					Message:  "Separator is not allowed to be over code",
+					Message:  "Separator is not allowed over code",
 				})
 			}
 		}
