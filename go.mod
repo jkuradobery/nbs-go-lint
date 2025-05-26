@@ -4,6 +4,7 @@ go 1.23.5
 
 require (
 	github.com/deckarep/golang-set/v2 v2.8.0
+	github.com/golangci/plugin-module-register v0.1.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/tools v0.33.0
 )
