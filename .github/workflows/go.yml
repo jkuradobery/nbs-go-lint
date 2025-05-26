@@ -20,3 +20,11 @@ jobs:
 
     - name: Build
       run: CGO_ENABLED=1 go build -buildmode=plugin plugin/main.go
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: nbs-go-lint-plugin
+        path: |
+          main.so
+        retention-days: 7
