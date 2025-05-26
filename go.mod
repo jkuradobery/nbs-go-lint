@@ -1,8 +1,6 @@
 module github.com/jkuradobery/nbs-go-lint
 
-go 1.23.0
-
-toolchain go1.23.5
+go 1.23.5
 
 require (
 	github.com/deckarep/golang-set/v2 v2.8.0
