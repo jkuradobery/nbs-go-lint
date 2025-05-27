@@ -211,6 +211,33 @@ func functionReturnsStruct(decl *ast.FuncDecl, structName string) bool {
 		}
 	}
 
+	// Find all return expressions in the child expressions
+	for _, expr := range decl.Body.List {
+		returnStmt, ok := expr.(*ast.ReturnStmt)
+		if !ok {
+			continue
+		}
+		// todo handle return of variable
+		// we do not deduce the type from something complicated,
+		// constructors are to be made simple, either var or assignment
+		// todo separate functions
+		for _, res := range returnStmt.Results {
+			// Check if one of results is a struct or pointer to struct
+			if unaryExpr, ok := res.(*ast.UnaryExpr); ok {
+				if unaryExpr.Op == token.AND {
+					x := unaryExpr.X
+					if compositeLit, ok := x.(*ast.CompositeLit); ok {
+						if ident, ok := compositeLit.Type.(*ast.Ident); ok {
+							if ident.Name == structName {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return false
 }
 
