@@ -212,26 +212,28 @@ func functionReturnsStruct(decl *ast.FuncDecl, structName string) bool {
 	}
 
 	// Find all return expressions in the child expressions
+	variableTypesByName := getVariableTypesByName(decl)
+
 	for _, expr := range decl.Body.List {
 		returnStmt, ok := expr.(*ast.ReturnStmt)
 		if !ok {
 			continue
 		}
-		// todo handle return of variable
+
 		// we do not deduce the type from something complicated,
 		// constructors are to be made simple, either var or assignment
-		// todo separate functions
-		for _, res := range returnStmt.Results {
-			// Check if one of results is a struct or pointer to struct
-			if unaryExpr, ok := res.(*ast.UnaryExpr); ok {
-				if unaryExpr.Op == token.AND {
-					x := unaryExpr.X
-					if compositeLit, ok := x.(*ast.CompositeLit); ok {
-						if ident, ok := compositeLit.Type.(*ast.Ident); ok {
-							if ident.Name == structName {
-								return true
-							}
-						}
+		// Also we do not care for returned types only for references to a type
+		for _, returnExpression := range returnStmt.Results {
+			// Check if one of results is a pointer to struct
+			//
+			if getReferencedStructType(returnExpression) == structName {
+				return true
+			}
+
+			if resIdent, ok := returnExpression.(*ast.Ident); ok {
+				if returnType, ok := variableTypesByName[resIdent.Name]; ok {
+					if returnType == structName {
+						return true
 					}
 				}
 			}
@@ -239,6 +241,53 @@ func functionReturnsStruct(decl *ast.FuncDecl, structName string) bool {
 	}
 
 	return false
+}
+
+func getReferencedStructType(decl ast.Expr) string {
+	unaryExpr, ok := decl.(*ast.UnaryExpr)
+	if !ok {
+		return ""
+	}
+
+	if unaryExpr.Op != token.AND {
+		return ""
+	}
+
+	x := unaryExpr.X
+	compositeLit, ok := x.(*ast.CompositeLit)
+	if !ok {
+		return ""
+	}
+
+	ident, ok := compositeLit.Type.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+
+	return ident.Name
+}
+
+func getVariableTypesByName(decl *ast.FuncDecl) map[string]string {
+	result := make(map[string]string)
+	for _, stmt := range decl.Body.List {
+		if assignStmt, ok := stmt.(*ast.AssignStmt); ok {
+			for index, lhs := range assignStmt.Lhs {
+				ident, ok := lhs.(*ast.Ident)
+				if !ok {
+					continue
+				}
+
+				name := ident.Name
+				leftSide := assignStmt.Rhs[index]
+				structType := getReferencedStructType(leftSide)
+				if structType != "" {
+					result[name] = structType
+				}
+			}
+		}
+	}
+
+	return result
 }
 
 ////////////////////////////////////////////////////////////////////////////////
