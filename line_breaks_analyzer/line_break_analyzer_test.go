@@ -8,7 +8,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func TestTodoAnalyzer(t *testing.T) {
+func TestLineBreaksAnalyzer(t *testing.T) {
 	analysistest.TestData()
 	analysistest.Run(
 		t,

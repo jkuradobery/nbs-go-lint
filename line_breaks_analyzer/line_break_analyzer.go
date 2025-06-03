@@ -65,9 +65,13 @@ func checkNoLineBreakBeforeRbracket(
 	lines []string,
 ) {
 	rbrace := blockStatement.Rbrace
-	previousLineIndex := pass.Fset.Position(
-		rbrace,
-	).Line - 2
+	lbraceLine := pass.Fset.Position(blockStatement.Lbrace).Line
+	rbraceLine := pass.Fset.Position(rbrace).Line
+	if rbraceLine-lbraceLine < 2 {
+		return
+	}
+
+	previousLineIndex := rbraceLine - 2
 	// .Line indexing starts from 1,
 	// so we need to subtract 2 to get the previous line
 	if previousLineIndex < 0 || previousLineIndex >= len(lines) {
