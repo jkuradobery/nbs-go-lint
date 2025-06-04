@@ -278,6 +278,12 @@ func getVariableTypesByName(decl *ast.FuncDecl) map[string]string {
 				}
 
 				name := ident.Name
+				if len(assignStmt.Rhs) <= index {
+					// If the value was returned from a function
+					// we do not want to deduce the type.
+					// It is a constructor, it should construct.
+					continue
+				}
 				leftSide := assignStmt.Rhs[index]
 				structType := getReferencedStructType(leftSide)
 				if structType != "" {
