@@ -3,6 +3,7 @@ package line_breaks_analyzer
 import (
 	"go/ast"
 	"log"
+	"regexp"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -98,9 +99,10 @@ func checkLineBreakAfterRbracket(
 ) {
 
 	rbrace := blockStatement.Rbrace
-	nextLineIndex := pass.Fset.Position(
+	rbracePosition := pass.Fset.Position(
 		rbrace,
-	).Line //  .Line indexing starts from 1
+	)
+	nextLineIndex := rbracePosition.Line //  .Line indexing starts from 1
 	if nextLineIndex >= len(lines) {
 		return
 	}
@@ -111,6 +113,19 @@ func checkLineBreakAfterRbracket(
 
 	if strings.Contains(nextLine, "}") {
 		return
+	}
+
+	currentLineIndex := rbracePosition.Line - 1
+	if currentLineIndex >= 0 && currentLineIndex < len(lines) {
+		afterBracket := strings.TrimSpace(
+			lines[currentLineIndex][rbracePosition.Column:],
+		)
+		beforeComment := strings.Split(afterBracket, `//`)[0]
+		beforeComment = regexp.MustCompile(`/\*.+\*/`).ReplaceAllString(
+			beforeComment, "")
+		if regexp.MustCompile(".*[,})].*").MatchString(beforeComment) {
+			return
+		}
 	}
 
 	if strings.HasPrefix(nextLine, "defer") {
