@@ -126,6 +126,17 @@ func doBracketedStuff() {
 		return 3
 	}
 
+	eax := func(
+		ebx int,
+		ecx uint,
+		edx float32,
+	) int {
+
+		defer func() {}()
+		return ebx * 2
+	}
+
+	eax(1, 3, 4.5)
 	c := b(
 		10,
 		func(i int) int {

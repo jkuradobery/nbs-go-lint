@@ -1,6 +1,7 @@
 package line_breaks_analyzer
 
 import (
+	set "github.com/deckarep/golang-set/v2"
 	"go/ast"
 	"log"
 	"regexp"
@@ -28,6 +29,22 @@ func LineBreakAfterRbracket() *analysis.Analyzer {
 				}
 
 				lines := strings.Split(string(data), "\n")
+				functionBodyLbracketsByLine := set.NewSet[int]()
+				ast.Inspect(file, func(n ast.Node) bool {
+					if funcDecl, ok := n.(*ast.FuncDecl); ok {
+						// We have a convention that line numbers start from 0,
+						// and it should be maintained throughout the linter.
+						line := fset.Position(funcDecl.Body.Lbrace).Line - 1
+						functionBodyLbracketsByLine.Add(line)
+					}
+
+					if funcLit, ok := n.(*ast.FuncLit); ok {
+						line := fset.Position(funcLit.Body.Lbrace).Line - 1
+						functionBodyLbracketsByLine.Add(line)
+					}
+
+					return true
+				})
 				ast.Inspect(file, func(node ast.Node) bool {
 					if blockStatement, ok := node.(*ast.BlockStmt); ok {
 						checkNoLineBreakBeforeRbracket(
@@ -47,6 +64,7 @@ func LineBreakAfterRbracket() *analysis.Analyzer {
 							pass,
 							deferStatement,
 							lines,
+							functionBodyLbracketsByLine,
 						)
 					}
 					return true
@@ -144,6 +162,7 @@ func checkNoNewLineBeforeDeferStatement(
 	pass *analysis.Pass,
 	deferStatement *ast.DeferStmt,
 	lines []string,
+	functionBodyLbracketsByLine set.Set[int],
 ) {
 	deferStmtPos := deferStatement.Pos()
 	previousLineIndex := pass.Fset.Position(deferStmtPos).Line - 2
@@ -158,6 +177,11 @@ func checkNoNewLineBeforeDeferStatement(
 		return
 	}
 
+	if functionBodyLbracketsByLine.Contains(previousLineIndex - 1) {
+		// If the previous line is a function body opening brace,
+		// we allow the line break before the defer statement.
+		return
+	}
 	pass.Report(analysis.Diagnostic{
 		Pos:      deferStmtPos,
 		End:      0,
