@@ -6,7 +6,6 @@
 - New line after `}` (exception: defer is pressed against the block above without indentation).
 - New line before `)` in the case of multiline calls.
 - New line after multiline function signature.
-- Use ID in all identifiers (not Id) (except for protobufs).
 - If an expression can fit on one line, it should be on one line.
 
 ### Separators
